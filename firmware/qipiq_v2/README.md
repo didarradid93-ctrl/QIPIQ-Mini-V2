@@ -11,7 +11,7 @@ Waveshare ESP32-S3-Touch-AMOLED-1.8 V2 платасына арналған.
 
 Дисплей мен сенсордың GPIO картасы және инициализациясы Waveshare BSP 2.0.3 компонентінен алынады. Жоба BSP-дің ресми quick start мысалындағы инициализация ретін қолданады. [Waveshare quick start](https://github.com/waveshareteam/ESP32-S3-Touch-AMOLED-1.8/tree/main/examples/esp-idf/00_bsp_quickstart) · [BSP 2.0.3](https://components.espressif.com/components/waveshare/esp32_s3_touch_amoled_1_8/versions/2.0.3/readme)
 
-ESP-IDF 5.5.6 терминалында жоба түбірінен құрастырыңыз. GitHub Actions та осы нұсқамен құрастырып, біріктірілген бинарды артефакт ретінде сақтайды.
+ESP-IDF 5.5.6 терминалында жоба түбірінен құрастырыңыз. GitHub Actions біріктірілген бинарды және NVS баптауларын сақтай отырып жазуға болатын бөлек файлдарды артефакт ретінде сақтайды.
 
 ```powershell
 cd firmware/qipiq_v2
@@ -32,6 +32,13 @@ Get-FileHash qipiq-original.bin -Algorithm SHA256
 
 ```powershell
 idf.py -p COM3 flash monitor
+```
+
+Дайын Windows жинағын жүктесеңіз, ZIP файлын ашып, Windows PowerShell ішінде төмендегі команданы орындаңыз. Скрипт алдымен толық көшірме алады, содан кейін `flash_args` ішіндегі бөлек файлдарды жазады. Дәл осы платадан бұрын алынған толық көшірме болса, оны `-BackupPath` параметрімен беруге болады.
+
+```powershell
+python -m pip install esptool
+.\Install-QIPIQ.ps1 -Port COM3
 ```
 
 Экранда QIPIQ беті мен жыпылықтау көрінуі керек. Түрткен сайын журналға `Expression` жазылады. Бетті ұзақ басқанда бір секундтық сынақ дыбысы ойнатылып, журналға `Test tone sent` жазылады.

@@ -25,8 +25,6 @@ static atomic_bool connected;
 static atomic_bool provisioning_ended;
 static atomic_bool provisioning_failed;
 
-static const wifi_prov_mgr_config_t manager = {.scheme = wifi_prov_scheme_softap};
-
 static void wifi_event(void *arg, esp_event_base_t base, int32_t id, void *data)
 {
     (void)arg;
@@ -87,6 +85,7 @@ static bool start_setup(void)
     }
     esp_wifi_stop();
     atomic_store(&connected, false);
+    const wifi_prov_mgr_config_t manager = {.scheme = wifi_prov_scheme_softap};
     if (wifi_prov_mgr_init(manager) != ESP_OK) {
         return false;
     }

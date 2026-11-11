@@ -152,6 +152,7 @@ static lv_obj_t *make_button(const char *text, int width, int height, lv_align_t
     lv_obj_align(button, align, x, y);
     lv_obj_set_style_bg_color(button, lv_color_hex(0x243d60), LV_PART_MAIN);
     lv_obj_set_style_radius(button, 13, LV_PART_MAIN);
+    lv_obj_remove_flag(button, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_event_cb(button, callback, LV_EVENT_CLICKED, user_data);
     return label_at(button, text, LV_ALIGN_CENTER, 0, 0);
 }
@@ -598,11 +599,13 @@ void qipiq_ui_start(lv_display_t *display, bool audio_ready)
     lv_obj_remove_style_all(content);
     lv_obj_remove_flag(content, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_size(content, lv_pct(100), lv_display_get_vertical_resolution(display) - 115);
-    lv_obj_align(content, LV_ALIGN_TOP_MID, 0, 51);
+    lv_obj_align(content, LV_ALIGN_TOP_MID, 0, 108);
 
     lv_obj_t *nav = lv_button_create(screen);
-    lv_obj_set_size(nav, 304, 45);
-    lv_obj_align(nav, LV_ALIGN_BOTTOM_MID, 0, -12);
+    lv_obj_set_size(nav, 316, 51);
+    lv_obj_align(nav, LV_ALIGN_TOP_MID, 0, 47);
+    lv_obj_add_flag(nav, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_remove_flag(nav, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_style_bg_color(nav, lv_color_hex(0x284867), 0);
     lv_obj_set_style_radius(nav, 13, 0);
     lv_obj_add_event_cb(nav, go_back, LV_EVENT_CLICKED, NULL);

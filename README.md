@@ -2,10 +2,10 @@
 
 Target device: **Waveshare ESP32-S3-Touch-AMOLED-1.8 V2** (CO5300 display, CST820 touch). This repository contains the foundation for a Kazakh-speaking AI pocket companion.
 
-**Status: PROTOTYPE. Firmware is not verified on real hardware and must not be flashed as a finished product.**
+The display, touch and local audio path have been tested on V2 hardware. The device guide lists the offline features and the implementation status tracks the remaining AI integration.
 
 ## Folders
-- `firmware/qipiq_v2/` — ESP-IDF display and touch prototype using the Waveshare BSP.
+- `firmware/qipiq_v2/` — ESP-IDF device firmware with Kazakh UI, local audio, games, timer, power telemetry and Wi-Fi setup.
 - `web-demo/index.html` — working standalone browser interface simulation (open in Chrome/Edge).
 - `backend/` — experimental FastAPI cloud AI integration; configure locally; not production audited.
 - `firmware/QIPIQ_Cloud_Test/` — Arduino cloud prototype only. **NOT** V2 AMOLED firmware.

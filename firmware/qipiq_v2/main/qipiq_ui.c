@@ -11,6 +11,7 @@
 #include "nvs_flash.h"
 #include "qipiq_audio.h"
 #include "qipiq_sensors.h"
+#include "qipiq_wifi.h"
 
 LV_FONT_DECLARE(qipiq_font_18);
 
@@ -22,6 +23,7 @@ typedef enum {
     PAGE_GUESS,
     PAGE_REACTION,
     PAGE_SETTINGS,
+    PAGE_WIFI,
 } page_t;
 
 typedef enum {
@@ -241,7 +243,7 @@ static void show_home(void)
     mouth = shape(28, 12, 0, 12);
     status_label = label_at(content, "", LV_ALIGN_BOTTOM_MID, 0, -76);
     if (has_audio) {
-        make_button("Дауыс жазу · 2 с", 244, 48, LV_ALIGN_BOTTOM_MID, 0, -14, record_voice, NULL);
+        make_button("Дауыс жазу (2 с)", 244, 48, LV_ALIGN_BOTTOM_MID, 0, -14, record_voice, NULL);
     }
     draw_face();
 }
@@ -419,6 +421,32 @@ static void show_settings(void)
     refresh_settings();
 }
 
+static void start_wifi_setup(lv_event_t *event)
+{
+    (void)event;
+    qipiq_wifi_request_setup();
+}
+
+static void refresh_wifi(void)
+{
+    static int last_wifi_state = -1;
+    const qipiq_wifi_state_t state = qipiq_wifi_state();
+    if ((int)state == last_wifi_state && lv_label_get_text(status_label)[0] != '\0') {
+        return;
+    }
+    last_wifi_state = state;
+    switch (state) {
+    case QIPIQ_WIFI_SETUP:
+        lv_label_set_text_fmt(status_label, "Желі: %s\nҚұпиясөз және код:\n%s",
+                              qipiq_wifi_setup_name(), qipiq_wifi_setup_code());
+        break;
+    case QIPIQ_WIFI_CONNECTING: lv_label_set_text(status_label, "Желіге қосылып жатыр…"); break;
+    case QIPIQ_WIFI_CONNECTED: lv_label_set_text(status_label, "Wi-Fi қосылды"); break;
+    case QIPIQ_WIFI_ERROR: lv_label_set_text(status_label, "Wi-Fi іске қосылмады"); break;
+    default: lv_label_set_text(status_label, "Wi-Fi бапталмаған"); break;
+    }
+}
+
 static void go_back(lv_event_t *event)
 {
     (void)event;
@@ -436,7 +464,7 @@ static void go_back(lv_event_t *event)
 static void show_page(page_t next)
 {
     static const char *const titles[] = {
-        "QIPIQ", "Мәзір", "Таймер", "Ойындар", "Сан тап", "Шапшаңдық", "Баптаулар",
+        "QIPIQ", "Мәзір", "Таймер", "Ойындар", "Сан тап", "Шапшаңдық", "Баптаулар", "Wi-Fi",
     };
     lv_obj_clean(content);
     page = next;
@@ -449,9 +477,10 @@ static void show_page(page_t next)
         show_home();
         break;
     case PAGE_MENU:
-        make_button("Таймер", 292, 57, LV_ALIGN_TOP_MID, 0, 26, open_page, (void *)PAGE_TIMER);
-        make_button("Ойындар", 292, 57, LV_ALIGN_TOP_MID, 0, 108, open_page, (void *)PAGE_GAMES);
-        make_button("Баптаулар", 292, 57, LV_ALIGN_TOP_MID, 0, 190, open_page, (void *)PAGE_SETTINGS);
+        make_button("Таймер", 292, 47, LV_ALIGN_TOP_MID, 0, 18, open_page, (void *)PAGE_TIMER);
+        make_button("Ойындар", 292, 47, LV_ALIGN_TOP_MID, 0, 80, open_page, (void *)PAGE_GAMES);
+        make_button("Баптаулар", 292, 47, LV_ALIGN_TOP_MID, 0, 142, open_page, (void *)PAGE_SETTINGS);
+        make_button("Wi-Fi", 292, 47, LV_ALIGN_TOP_MID, 0, 204, open_page, (void *)PAGE_WIFI);
         break;
     case PAGE_TIMER:
         show_timer();
@@ -469,6 +498,13 @@ static void show_page(page_t next)
         break;
     case PAGE_SETTINGS:
         show_settings();
+        break;
+    case PAGE_WIFI:
+        status_label = label_at(content, "", LV_ALIGN_TOP_MID, 0, 35);
+        lv_obj_set_style_text_align(status_label, LV_TEXT_ALIGN_CENTER, 0);
+        make_button("Wi-Fi баптау", 270, 51, LV_ALIGN_TOP_MID, 0, 143, start_wifi_setup, NULL);
+        label_at(content, "Телефонда ESP SoftAP Provisioning ашыңыз", LV_ALIGN_BOTTOM_MID, 0, -18);
+        refresh_wifi();
         break;
     }
     ESP_LOGI(TAG, "Page %d", next);
@@ -537,6 +573,8 @@ static void tick(lv_timer_t *timer)
     update_sensors(now);
     if (page == PAGE_HOME) {
         draw_face();
+    } else if (page == PAGE_WIFI) {
+        refresh_wifi();
     }
 }
 

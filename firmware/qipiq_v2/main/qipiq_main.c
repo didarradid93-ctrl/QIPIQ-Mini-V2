@@ -3,6 +3,7 @@
 #include "qipiq_audio.h"
 #include "qipiq_sensors.h"
 #include "qipiq_ui.h"
+#include "qipiq_wifi.h"
 
 void app_main(void)
 {
@@ -20,5 +21,6 @@ void app_main(void)
     }
     qipiq_ui_start(display, audio_ready);
     bsp_display_unlock();
+    qipiq_wifi_start();
     ESP_LOGI("qipiq", "Offline menu ready");
 }

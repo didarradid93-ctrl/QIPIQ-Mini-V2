@@ -1,12 +1,11 @@
 """QIPIQ Mini local/development OpenAI API gateway.
 
-Privacy: no chat or audio is written to disk; in-memory usage counters reset
-on restart. Protect the app before making it accessible publicly.
+Privacy: chat and audio are not written to disk. The in-memory limiter resets
+on restart; this prototype is not suitable for untrusted public deployment.
 """
 from __future__ import annotations
 
 import hmac
-import io
 import os
 import time
 from collections import defaultdict, deque
@@ -14,18 +13,18 @@ from pathlib import Path
 from threading import Lock
 from typing import Literal
 
+from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response
 import httpx
-from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 
 APP_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(APP_DIR / "backend" / ".env")
 app = FastAPI(title="QIPIQ Mini – OpenAI Gateway", version="1.0.0")
 
-# A single-user prototype limiter. For multi-instance deployments use Redis and
-# per-device identity and provider spending controls.
+# Prototype-only in-memory limits. Use shared storage and per-device identity
+# before deploying multiple workers or exposing this service publicly.
 usage: dict[str, deque[float]] = defaultdict(deque)
 requests_today: dict[str, tuple[str, int]] = {}
 lock = Lock()
@@ -38,17 +37,20 @@ SYSTEM_PROMPT = (
     "Пайдаланушы кәмелетке толмаған болуы мүмкін: жеке мекенжай, телефон, құпиясөз, "
     "мектеп мекенжайы сияқты деректерді сұрама; қауіпті әрекеттерге нұсқау берме. "
     "Нақты уақыттағы ауа райы, сағат немесе интернет жаңалықтарын білетініңді мәлімдеме, "
-    "егер құрал арқылы расталмаса. Сенде камераға немесе нақты құрылғының сенсорларына "
+    "егер құрал арқылы расталмаса. Сенде камераға немесе нақты құрылғы сенсорларына "
     "тікелей қатынас жоқ. Жауапта Markdown қолданба."
 )
+
 
 class HistoryTurn(BaseModel):
     role: Literal["user", "assistant"]
     content: str = Field(min_length=1, max_length=420)
 
+
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=420)
     history: list[HistoryTurn] = Field(default_factory=list, max_length=6)
+
 
 class SpeechRequest(BaseModel):
     text: str = Field(min_length=1, max_length=280)
@@ -78,19 +80,19 @@ def authorize(x_device_token: str = Header(default="")) -> str:
 
 
 def throttle(device: str) -> None:
-    s = settings()
     now = time.monotonic()
     day = time.strftime("%Y-%m-%d", time.gmtime())
+    s = settings()
     with lock:
-        q = usage[device]
-        while q and q[0] <= now - 60:
-            q.popleft()
+        queue = usage[device]
+        while queue and queue[0] <= now - 60:
+            queue.popleft()
         old_day, used = requests_today.get(device, (day, 0))
         if old_day != day:
             used = 0
-        if len(q) >= s["minute_limit"] or used >= s["daily_limit"]:
+        if len(queue) >= s["minute_limit"] or used >= s["daily_limit"]:
             raise HTTPException(status_code=429, detail="QIPIQ сұрау шегі бітті, кейін қайталаңыз")
-        q.append(now)
+        queue.append(now)
         requests_today[device] = (day, used + 1)
 
 
@@ -116,53 +118,64 @@ def provider_json(response: httpx.Response) -> dict:
 
 @app.get("/")
 def index():
-    return FileResponse(APP_DIR / "web" / "index.html")
+    # The demo is served from this repository's actual standalone web-demo folder.
+    demo_path = APP_DIR / "web-demo" / "index.html"
+    if not demo_path.is_file():
+        raise HTTPException(status_code=404, detail="Браузерлік демо файлы табылмады")
+    return FileResponse(demo_path)
 
 
 @app.get("/health")
 def health():
     s = settings()
-    return {"status": "ok", "ai_ready": bool(s["api_key"]),
-            "auth_ready": bool(s["token"]), "mode": "demo" if s["demo"] else "live",
-            "text_model": s["model"], "tts_model": s["tts_model"]}
+    return {
+        "status": "ok",
+        "ai_ready": bool(s["api_key"]),
+        "auth_ready": bool(s["token"]),
+        "mode": "demo" if s["demo"] else "live",
+        "text_model": s["model"],
+        "tts_model": s["tts_model"],
+    }
 
 
 @app.get("/v1/ping")
 def ping(device: str = Depends(authorize)):
     return {"authenticated": True, "service": "QIPIQ Mini"}
 
+
 def reply_for(message: str, history: list[HistoryTurn]) -> str:
-    messages = [{"role": x.role, "content": x.content} for x in history]
+    messages = [{"role": turn.role, "content": turn.content} for turn in history]
     messages.append({"role": "user", "content": message})
     with get_http_client() as client:
         response = client.post(
             "https://api.openai.com/v1/responses",
             headers={**openai_headers(), "Content-Type": "application/json"},
-            json={"model": settings()["model"], "instructions": SYSTEM_PROMPT,
-                  "input": messages, "max_output_tokens": 300, "store": False,
-                  **({"reasoning": {"effort": "none"}} if settings()["model"] == "gpt-4o-mini" else {})},
+            json={
+                "model": settings()["model"],
+                "instructions": SYSTEM_PROMPT,
+                "input": messages,
+                "max_output_tokens": 300,
+                "store": False,
+                **({"reasoning": {"effort": "none"}} if settings()["model"] == "gpt-4o-mini" else {}),
+            },
         )
     data = provider_json(response)
-    # The SDK's output_text is a convenience helper. Raw HTTP Responses use
-    # output[].content[].text (output items may include non-message content).
-    chunks = []
-    for item in data.get("output", []):
-        if item.get("type") != "message":
-            continue
-        for part in item.get("content", []):
-            if part.get("type") == "output_text":
-                chunks.append(part.get("text", ""))
+    chunks = [
+        part.get("text", "")
+        for item in data.get("output", []) if item.get("type") == "message"
+        for part in item.get("content", []) if part.get("type") == "output_text"
+    ]
     answer = "\n".join(chunks).strip()
     if not answer:
         raise RuntimeError("Model returned no text")
     return answer[:850]
 
 
-def mood_from_text(s: str):
-    s = s.lower()
-    if any(t in s for t in ("қуаныш", "керемет", "рахмет", "жарайсың", "😊")):
+def mood_from_text(text: str) -> str:
+    lowered = text.lower()
+    if any(word in lowered for word in ("қуаныш", "керемет", "рахмет", "жарайсың", "😊")):
         return "happy"
-    if any(t in s for t in ("кешір", "өкініш", "қинал")):
+    if any(word in lowered for word in ("кешір", "өкініш", "қинал")):
         return "sad"
     return "friendly"
 
@@ -171,8 +184,11 @@ def mood_from_text(s: str):
 def chat(body: ChatRequest, device: str = Depends(authorize)):
     throttle(device)
     if settings()["demo"]:
-        return {"reply": f"Сәлем! Мен QIPIQ Mini демомын. Сіз: «{body.message}» деп сұрадыңыз. ChatGPT үшін DEMO_MODE=false орнатыңыз.",
-                "emotion": "happy", "mode": "demo"}
+        return {
+            "reply": f"Сәлем! Мен QIPIQ Mini демомын. Сіз: «{body.message}» деп сұрадыңыз. ChatGPT үшін DEMO_MODE=false орнатыңыз.",
+            "emotion": "happy",
+            "mode": "demo",
+        }
     try:
         answer = reply_for(body.message, body.history)
     except HTTPException:
@@ -184,6 +200,7 @@ def chat(body: ChatRequest, device: str = Depends(authorize)):
 
 AUDIO_EXTENSIONS = {".webm", ".wav", ".mp3", ".m4a", ".mp4", ".mpeg", ".mpga"}
 MAX_AUDIO_BYTES = 2 * 1024 * 1024
+
 
 @app.post("/v1/transcribe")
 def transcribe(audio: UploadFile = File(...), device: str = Depends(authorize)):
@@ -201,13 +218,11 @@ def transcribe(audio: UploadFile = File(...), device: str = Depends(authorize)):
             response = client.post(
                 "https://api.openai.com/v1/audio/transcriptions",
                 headers=openai_headers(),
-                data={"model": settings()["stt_model"],
-                      "prompt": "Қазақша және орысша сөйлеу. QIPIQ Mini, Қипиқ, AI гаджет."},
+                data={"model": settings()["stt_model"], "prompt": "Қазақша және орысша сөйлеу. QIPIQ Mini, Қипиқ, AI гаджет."},
                 files={"file": (f"recording{suffix}", raw, audio.content_type or "application/octet-stream")},
             )
         data = provider_json(response)
         return {"text": str(data.get("text", ""))[:420], "mode": "openai"}
-
     except HTTPException:
         raise
     except Exception:
@@ -224,17 +239,22 @@ def speech(body: SpeechRequest, device: str = Depends(authorize)):
             response = client.post(
                 "https://api.openai.com/v1/audio/speech",
                 headers={**openai_headers(), "Content-Type": "application/json"},
-                json={"model": settings()["tts_model"], "voice": settings()["tts_voice"],
-                      "input": body.text, "response_format": "mp3",
-                      "instructions": "Speak Kazakh clearly, warmly, and naturally, as a friendly digital assistant."},
+                json={
+                    "model": settings()["tts_model"],
+                    "voice": settings()["tts_voice"],
+                    "input": body.text,
+                    "response_format": "mp3",
+                    "instructions": "Speak Kazakh clearly, warmly, and naturally, as a friendly digital assistant.",
+                },
             )
         response.raise_for_status()
         if len(response.content) > 4 * 1024 * 1024:
             raise RuntimeError("Unexpected oversized audio")
-        return Response(content=response.content, media_type="audio/mpeg",
-                        headers={"Cache-Control": "no-store"})
-
+        return Response(content=response.content, media_type="audio/mpeg", headers={"Cache-Control": "no-store"})
     except HTTPException:
         raise
     except Exception:
         raise HTTPException(502, "Дыбыстап жауап беру сәтсіз аяқталды")
+
+
+__all__ = ["app"]

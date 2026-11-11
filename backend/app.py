@@ -13,11 +13,13 @@ from pathlib import Path
 from threading import Lock
 from typing import Literal
 
-from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Header, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, Response
 import httpx
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
+
+from .realtime_voice import INPUT_RATE, REALTIME_RATE, VoiceError, request_voice_reply
 
 APP_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(APP_DIR / "backend" / ".env")
@@ -61,6 +63,8 @@ def settings():
         "stt_model": os.getenv("QIPIQ_STT_MODEL", "gpt-transcribe"),
         "tts_model": os.getenv("QIPIQ_TTS_MODEL", "gpt-4o-mini-tts"),
         "tts_voice": os.getenv("QIPIQ_TTS_VOICE", "marin"),
+        "realtime_model": os.getenv("QIPIQ_REALTIME_MODEL", "gpt-realtime-2.1-mini"),
+        "realtime_voice": os.getenv("QIPIQ_REALTIME_VOICE", "marin"),
         "demo": os.getenv("QIPIQ_DEMO_MODE", "false").lower() == "true",
         "minute_limit": max(1, int(os.getenv("QIPIQ_REQUESTS_PER_MINUTE", "12"))),
         "daily_limit": max(1, int(os.getenv("QIPIQ_REQUESTS_PER_DAY", "150"))),
@@ -182,6 +186,52 @@ def chat(body: ChatRequest, device: str = Depends(authorize)):
 
 AUDIO_EXTENSIONS = {".webm", ".wav", ".mp3", ".m4a", ".mp4", ".mpeg", ".mpga"}
 MAX_AUDIO_BYTES = 2 * 1024 * 1024
+MAX_VOICE_BYTES = INPUT_RATE * 2 * 6
+MIN_VOICE_BYTES = INPUT_RATE * 2 // 5
+
+
+@app.post("/v1/voice", response_class=Response)
+async def voice_turn(request: Request, device: str = Depends(authorize)):
+    """Accept one 16 kHz PCM16 turn and return 24 kHz PCM16 mono."""
+    media_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    if media_type != "application/octet-stream":
+        raise HTTPException(415, "16 кГц PCM16 моно аудиосын жіберіңіз")
+
+    audio = bytearray()
+    async for chunk in request.stream():
+        if len(audio) + len(chunk) > MAX_VOICE_BYTES:
+            raise HTTPException(413, "Дауыс жазбасы 6 секундтан аспауы керек")
+        audio.extend(chunk)
+    if len(audio) < MIN_VOICE_BYTES or len(audio) % 2:
+        raise HTTPException(422, "PCM16 аудиосы толық болуы және кемінде 0,2 секундқа созылуы керек")
+
+    config = settings()
+    if config["demo"]:
+        raise HTTPException(503, "Демо режимінде AI дауысы қолжетімсіз")
+    api_key = get_key()
+    throttle(device)
+    try:
+        reply = await request_voice_reply(
+            bytes(audio),
+            api_key=api_key,
+            model=config["realtime_model"],
+            voice=config["realtime_voice"],
+            instructions=SYSTEM_PROMPT + " Дауыс анық естілмесе, сұрақты қайталауды өтін.",
+        )
+    except TimeoutError:
+        raise HTTPException(504, "AI дауысының жауап беру уақыты аяқталды")
+    except VoiceError:
+        raise HTTPException(502, "AI дауысы қолжетімсіз")
+    return Response(
+        reply,
+        media_type="application/octet-stream",
+        headers={
+            "Cache-Control": "no-store",
+            "X-QIPIQ-Audio-Format": "pcm-s16le",
+            "X-QIPIQ-Sample-Rate": str(REALTIME_RATE),
+            "X-QIPIQ-Channels": "1",
+        },
+    )
 
 @app.post("/v1/transcribe")
 def transcribe(audio: UploadFile = File(...), device: str = Depends(authorize)):

@@ -471,6 +471,8 @@ static void refresh_wifi(void)
     case QIPIQ_WIFI_ERROR: lv_label_set_text(status_label, "Wi-Fi іске қосылмады"); break;
     default: lv_label_set_text(status_label, "Wi-Fi бапталмаған"); break;
     }
+    // Replace the previous QR and status pixels on the partial-update display.
+    lv_obj_invalidate(content);
 }
 
 static void go_back(lv_event_t *event)
@@ -548,6 +550,7 @@ static void show_page(page_t next)
         break;
     }
     }
+    lv_obj_invalidate(lv_display_get_screen_active(panel));
     ESP_LOGI(TAG, "Page %d", next);
 }
 
@@ -630,6 +633,7 @@ void qipiq_ui_start(lv_display_t *display, bool audio_ready)
 
     lv_obj_t *screen = lv_display_get_screen_active(display);
     lv_obj_set_style_bg_color(screen, lv_color_hex(0x0b1420), 0);
+    lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
     lv_obj_set_style_text_color(screen, lv_color_hex(0xf1f6ff), 0);
     lv_obj_set_style_text_font(screen, &qipiq_font_18, 0);
     lv_obj_remove_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
@@ -639,6 +643,8 @@ void qipiq_ui_start(lv_display_t *display, bool audio_ready)
     content = lv_obj_create(screen);
     lv_obj_remove_style_all(content);
     lv_obj_remove_flag(content, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_bg_color(content, lv_color_hex(0x0b1420), 0);
+    lv_obj_set_style_bg_opa(content, LV_OPA_COVER, 0);
     lv_obj_set_size(content, lv_pct(100), lv_display_get_vertical_resolution(display) - 115);
     lv_obj_align(content, LV_ALIGN_TOP_MID, 0, 108);
 

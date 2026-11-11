@@ -5,6 +5,7 @@ Target device: **Waveshare ESP32-S3-Touch-AMOLED-1.8 V2** (CO5300 display, CST82
 **Status: PROTOTYPE. Firmware is not verified on real hardware and must not be flashed as a finished product.**
 
 ## Folders
+- `firmware/qipiq_v2/` — ESP-IDF display and touch prototype using the Waveshare BSP.
 - `web-demo/index.html` — working standalone browser interface simulation (open in Chrome/Edge).
 - `backend/` — experimental FastAPI cloud AI integration; configure locally; not production audited.
 - `firmware/QIPIQ_Cloud_Test/` — Arduino cloud prototype only. **NOT** V2 AMOLED firmware.

@@ -2,6 +2,8 @@ name: Prototype checks
 on:
   push:
   pull_request:
+permissions:
+  contents: read
 jobs:
   static-checks:
     runs-on: ubuntu-latest
@@ -16,3 +18,22 @@ jobs:
         run: test -s web-demo/index.html && grep -qi 'QIPIQ' web-demo/index.html
       - name: Secrets safety reminder
         run: test ! -f backend/.env
+  firmware:
+    runs-on: ubuntu-latest
+    container: espressif/idf:v5.5.6
+    defaults:
+      run:
+        shell: bash
+        working-directory: firmware/qipiq_v2
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build ESP32-S3 firmware
+        run: |
+          source /opt/esp/idf/export.sh
+          idf.py build
+          idf.py merge-bin -o qipiq-mini-v2-flash.bin -f raw
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qipiq-mini-v2-firmware
+          path: firmware/qipiq_v2/build/qipiq-mini-v2-flash.bin
+          if-no-files-found: error

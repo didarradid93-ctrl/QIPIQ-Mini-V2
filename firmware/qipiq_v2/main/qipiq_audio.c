@@ -4,6 +4,7 @@
 #include <stdlib.h>
 
 #include "bsp/esp-bsp.h"
+#include "driver/i2s_std.h"
 #include "esp_codec_dev.h"
 #include "esp_err.h"
 #include "esp_heap_caps.h"
@@ -131,7 +132,17 @@ static void speaker_task(void *arg)
 
 bool qipiq_audio_start(void)
 {
-    const i2s_std_config_t i2s_config = BSP_I2S_DUPLEX_MONO_CFG(SAMPLE_RATE);
+    const i2s_std_config_t i2s_config = {
+        .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(SAMPLE_RATE),
+        .slot_cfg = I2S_STD_PHILIP_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_MONO),
+        .gpio_cfg = {
+            .mclk = BSP_I2S_MCLK,
+            .bclk = BSP_I2S_SCLK,
+            .ws = BSP_I2S_LCLK,
+            .dout = BSP_I2S_DOUT,
+            .din = BSP_I2S_DSIN,
+        },
+    };
     if (bsp_audio_init(&i2s_config) != ESP_OK) {
         ESP_LOGW(TAG, "I2S initialization failed");
         return false;

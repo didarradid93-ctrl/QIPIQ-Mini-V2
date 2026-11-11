@@ -136,7 +136,7 @@ static void run_wifi(void *arg)
                 wifi_prov_mgr_deinit();
                 provisioning = false;
                 station = atomic_load(&connected) || start_station();
-            } else if (now - setup_started >= pdMS_TO_TICKS(120000)) {
+            } else if (now - setup_started >= pdMS_TO_TICKS(180000)) {
                 wifi_prov_mgr_stop_provisioning();
             }
         }

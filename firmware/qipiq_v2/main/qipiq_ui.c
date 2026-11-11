@@ -1,6 +1,7 @@
 #include "qipiq_ui.h"
 
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "bsp/esp-bsp.h"
@@ -67,6 +68,10 @@ static lv_obj_t *timer_action;
 static lv_obj_t *timer_buttons[2];
 static lv_obj_t *settings_labels[3];
 static lv_obj_t *sensor_label;
+static lv_obj_t *wifi_qr_frame;
+static lv_obj_t *wifi_qr;
+static lv_obj_t *wifi_details;
+static lv_obj_t *wifi_action;
 static page_t page;
 static bool has_audio;
 static bool motion_enabled = true;
@@ -436,11 +441,31 @@ static void refresh_wifi(void)
         return;
     }
     last_wifi_state = state;
+    lv_obj_add_flag(wifi_qr_frame, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(wifi_details, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_remove_flag(wifi_action, LV_OBJ_FLAG_HIDDEN);
     switch (state) {
-    case QIPIQ_WIFI_SETUP:
-        lv_label_set_text_fmt(status_label, "Желі: %s\nҚұпиясөз және код:\n%s",
-                              qipiq_wifi_setup_name(), qipiq_wifi_setup_code());
+    case QIPIQ_WIFI_SETUP: {
+        const char *name = qipiq_wifi_setup_name();
+        const char *code = qipiq_wifi_setup_code();
+        char payload[160];
+        const int length = snprintf(payload, sizeof(payload),
+            "{\"ver\":\"v1\",\"name\":\"%s\",\"pop\":\"%s\",\"transport\":\"softap\","
+            "\"security\":1,\"password\":\"%s\"}", name, code, code);
+        lv_label_set_text_fmt(wifi_details, "%s\nКод: %s", name, code);
+        lv_obj_remove_flag(wifi_details, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(wifi_action, LV_OBJ_FLAG_HIDDEN);
+        if (length > 0 && (size_t)length < sizeof(payload) &&
+            lv_qrcode_update(wifi_qr, payload, length) == LV_RESULT_OK) {
+            lv_label_set_text(status_label, "Қолданбада QR кодты оқытыңыз");
+            lv_obj_remove_flag(wifi_qr_frame, LV_OBJ_FLAG_HIDDEN);
+            ESP_LOGI(TAG, "Wi-Fi setup QR rendered");
+        } else {
+            lv_label_set_text(status_label, "Желіні қолмен таңдаңыз");
+            ESP_LOGW(TAG, "Wi-Fi setup QR generation failed");
+        }
         break;
+    }
     case QIPIQ_WIFI_CONNECTING: lv_label_set_text(status_label, "Желіге қосылып жатыр…"); break;
     case QIPIQ_WIFI_CONNECTED: lv_label_set_text(status_label, "Wi-Fi қосылды"); break;
     case QIPIQ_WIFI_ERROR: lv_label_set_text(status_label, "Wi-Fi іске қосылмады"); break;
@@ -500,13 +525,28 @@ static void show_page(page_t next)
     case PAGE_SETTINGS:
         show_settings();
         break;
-    case PAGE_WIFI:
-        status_label = label_at(content, "", LV_ALIGN_TOP_MID, 0, 35);
+    case PAGE_WIFI: {
+        status_label = label_at(content, "", LV_ALIGN_TOP_MID, 0, 9);
         lv_obj_set_style_text_align(status_label, LV_TEXT_ALIGN_CENTER, 0);
-        make_button("Wi-Fi баптау", 270, 51, LV_ALIGN_TOP_MID, 0, 143, start_wifi_setup, NULL);
-        label_at(content, "Телефонда ESP SoftAP Provisioning ашыңыз", LV_ALIGN_BOTTOM_MID, 0, -18);
+        wifi_qr_frame = lv_obj_create(content);
+        lv_obj_remove_style_all(wifi_qr_frame);
+        lv_obj_remove_flag(wifi_qr_frame, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_set_size(wifi_qr_frame, 212, 212);
+        lv_obj_set_style_bg_color(wifi_qr_frame, lv_color_white(), 0);
+        lv_obj_set_style_bg_opa(wifi_qr_frame, LV_OPA_COVER, 0);
+        lv_obj_align(wifi_qr_frame, LV_ALIGN_TOP_MID, 0, 43);
+        wifi_qr = lv_qrcode_create(wifi_qr_frame);
+        lv_qrcode_set_size(wifi_qr, 180);
+        lv_qrcode_set_dark_color(wifi_qr, lv_color_black());
+        lv_qrcode_set_light_color(wifi_qr, lv_color_white());
+        lv_obj_center(wifi_qr);
+        wifi_details = label_at(content, "", LV_ALIGN_TOP_MID, 0, 263);
+        lv_obj_set_style_text_align(wifi_details, LV_TEXT_ALIGN_CENTER, 0);
+        wifi_action = lv_obj_get_parent(make_button("Wi-Fi баптау", 270, 51, LV_ALIGN_TOP_MID, 0, 143,
+                                                    start_wifi_setup, NULL));
         refresh_wifi();
         break;
+    }
     }
     ESP_LOGI(TAG, "Page %d", next);
 }
@@ -544,7 +584,8 @@ static void tick(lv_timer_t *timer)
 {
     (void)timer;
     const int64_t now = now_ms();
-    const bool should_dim = lv_display_get_inactive_time(panel) >= 30000;
+    const bool showing_qr = page == PAGE_WIFI && qipiq_wifi_state() == QIPIQ_WIFI_SETUP;
+    const bool should_dim = !showing_qr && lv_display_get_inactive_time(panel) >= 30000;
     if (should_dim != dimmed) {
         dimmed = should_dim;
         sleeping = dimmed;

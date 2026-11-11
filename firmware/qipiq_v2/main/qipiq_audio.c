@@ -1,5 +1,6 @@
 #include <math.h>
 #include <stddef.h>
+#include <stdatomic.h>
 #include <stdint.h>
 #include <stdlib.h>
 
@@ -15,6 +16,8 @@
 
 static const char *TAG = "qipiq_audio";
 static TaskHandle_t audio_task;
+static atomic_int speaker_volume = 80;
+static atomic_int audio_state = QIPIQ_AUDIO_IDLE;
 
 enum {
     SAMPLE_RATE = 16000,
@@ -23,7 +26,6 @@ enum {
     FADE_SAMPLES = SAMPLE_RATE / 100,
     FRAME_SAMPLES = 160,
     RECORD_SAMPLES = SAMPLE_RATE * 2,
-    SPEAKER_VOLUME = 80,
     PLAY_TONE = 1,
     RECORD_AND_PLAY = 2,
 };
@@ -41,7 +43,7 @@ static int open_speaker(esp_codec_dev_handle_t speaker)
     if (result != ESP_CODEC_DEV_OK) {
         return result;
     }
-    return esp_codec_dev_set_out_vol(speaker, SPEAKER_VOLUME);
+    return esp_codec_dev_set_out_vol(speaker, atomic_load(&speaker_volume));
 }
 
 static int play_tone(esp_codec_dev_handle_t speaker)
@@ -76,6 +78,7 @@ static int record_and_play(esp_codec_dev_handle_t speaker, esp_codec_dev_handle_
     if (result == ESP_CODEC_DEV_OK) {
         result = esp_codec_dev_set_in_gain(microphone, 24.0f);
         if (result == ESP_CODEC_DEV_OK) {
+            atomic_store(&audio_state, QIPIQ_AUDIO_RECORDING);
             ESP_LOGI(TAG, "Recording for two seconds");
             result = esp_codec_dev_read(microphone, samples, bytes);
         }
@@ -93,6 +96,7 @@ static int record_and_play(esp_codec_dev_handle_t speaker, esp_codec_dev_handle_
         ESP_LOGI(TAG, "Recorded %u bytes; peak %d", (unsigned)bytes, peak);
         result = open_speaker(speaker);
         if (result == ESP_CODEC_DEV_OK) {
+            atomic_store(&audio_state, QIPIQ_AUDIO_PLAYING);
             result = esp_codec_dev_write(speaker, samples, bytes);
         }
         esp_codec_dev_close(speaker);
@@ -111,6 +115,7 @@ static void speaker_task(void *arg)
         int result;
         if (action == RECORD_AND_PLAY) {
             if (microphone == NULL) {
+                atomic_store(&audio_state, QIPIQ_AUDIO_ERROR);
                 ESP_LOGW(TAG, "Microphone unavailable");
                 continue;
             }
@@ -118,13 +123,16 @@ static void speaker_task(void *arg)
         } else {
             result = open_speaker(speaker);
             if (result == ESP_CODEC_DEV_OK) {
+                atomic_store(&audio_state, QIPIQ_AUDIO_PLAYING);
                 result = play_tone(speaker);
             }
             esp_codec_dev_close(speaker);
         }
         if (result == ESP_CODEC_DEV_OK) {
+            atomic_store(&audio_state, QIPIQ_AUDIO_IDLE);
             ESP_LOGI(TAG, "%s", action == RECORD_AND_PLAY ? "Microphone playback sent" : "Test tone sent");
         } else {
+            atomic_store(&audio_state, QIPIQ_AUDIO_ERROR);
             ESP_LOGW(TAG, "Audio operation failed: %d", result);
         }
     }
@@ -174,4 +182,14 @@ void qipiq_audio_request_loopback(void)
     if (audio_task != NULL) {
         xTaskNotify(audio_task, RECORD_AND_PLAY, eSetValueWithoutOverwrite);
     }
+}
+
+void qipiq_audio_set_volume(int volume)
+{
+    atomic_store(&speaker_volume, volume);
+}
+
+qipiq_audio_state_t qipiq_audio_get_state(void)
+{
+    return atomic_load(&audio_state);
 }

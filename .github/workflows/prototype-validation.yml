@@ -39,5 +39,10 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: qipiq-mini-v2-firmware
-          path: firmware/qipiq_v2/build/qipiq-mini-v2-flash.bin
+          path: |
+            firmware/qipiq_v2/build/qipiq-mini-v2-flash.bin
+            firmware/qipiq_v2/build/bootloader/bootloader.bin
+            firmware/qipiq_v2/build/partition_table/partition-table.bin
+            firmware/qipiq_v2/build/qipiq_mini_v2.bin
+            firmware/qipiq_v2/build/flash_args
           if-no-files-found: error

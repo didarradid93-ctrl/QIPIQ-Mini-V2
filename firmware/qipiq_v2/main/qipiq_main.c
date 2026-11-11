@@ -56,6 +56,12 @@ static void on_long_press(lv_event_t *event)
     qipiq_audio_request_tone();
 }
 
+static void on_voice_test(lv_event_t *event)
+{
+    (void)event;
+    qipiq_audio_request_loopback();
+}
+
 static void finish_blink(lv_timer_t *timer)
 {
     (void)timer;
@@ -107,11 +113,22 @@ static void create_face(lv_display_t *display, bool audio_ready)
     eyes[1] = make_shape(screen, 52, 68, 54, -22);
     mouth = make_shape(screen, 28, 12, 0, 59);
     emotion_label = lv_label_create(screen);
-    lv_obj_align(emotion_label, LV_ALIGN_BOTTOM_MID, 0, -74);
+    lv_obj_align(emotion_label, LV_ALIGN_BOTTOM_MID, 0, -112);
 
     lv_obj_t *hint = lv_label_create(screen);
     lv_label_set_text(hint, audio_ready ? "Tap: expression  |  Hold: sound" : "Tap to change expression");
-    lv_obj_align(hint, LV_ALIGN_BOTTOM_MID, 0, -38);
+    lv_obj_align(hint, LV_ALIGN_BOTTOM_MID, 0, audio_ready ? -81 : -38);
+
+    if (audio_ready) {
+        lv_obj_t *button = lv_button_create(screen);
+        lv_obj_set_size(button, 210, 48);
+        lv_obj_align(button, LV_ALIGN_BOTTOM_MID, 0, -20);
+        lv_obj_add_event_cb(button, on_voice_test, LV_EVENT_CLICKED, NULL);
+
+        lv_obj_t *label = lv_label_create(button);
+        lv_label_set_text(label, "Record & replay (2 s)");
+        lv_obj_center(label);
+    }
 
     draw_expression();
     lv_timer_create(start_blink, 3200, NULL);

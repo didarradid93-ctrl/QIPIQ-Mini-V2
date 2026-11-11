@@ -6,7 +6,6 @@ on restart. Protect the app before making it accessible publicly.
 from __future__ import annotations
 
 import hmac
-import io
 import os
 import time
 from collections import defaultdict, deque
@@ -72,7 +71,7 @@ def authorize(x_device_token: str = Header(default="")) -> str:
     valid_token = settings()["token"]
     if not valid_token:
         raise HTTPException(status_code=503, detail="QIPIQ_DEVICE_TOKEN серверде орнатылмаған")
-    if not hmac.compare_digest(x_device_token, valid_token):
+    if not hmac.compare_digest(x_device_token.encode("utf-8"), valid_token.encode("utf-8")):
         raise HTTPException(status_code=401, detail="Құрылғы коды қате")
     return "device"
 
@@ -116,7 +115,7 @@ def provider_json(response: httpx.Response) -> dict:
 
 @app.get("/")
 def index():
-    return FileResponse(APP_DIR / "web" / "index.html")
+    return FileResponse(APP_DIR / "web-demo" / "index.html")
 
 
 @app.get("/health")
@@ -139,8 +138,7 @@ def reply_for(message: str, history: list[HistoryTurn]) -> str:
             "https://api.openai.com/v1/responses",
             headers={**openai_headers(), "Content-Type": "application/json"},
             json={"model": settings()["model"], "instructions": SYSTEM_PROMPT,
-                  "input": messages, "max_output_tokens": 300, "store": False,
-                  **({"reasoning": {"effort": "none"}} if settings()["model"] == "gpt-4o-mini" else {})},
+                  "input": messages, "max_output_tokens": 300, "store": False},
         )
     data = provider_json(response)
     # The SDK's output_text is a convenience helper. Raw HTTP Responses use

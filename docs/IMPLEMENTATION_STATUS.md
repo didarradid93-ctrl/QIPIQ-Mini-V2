@@ -9,7 +9,7 @@
 | ESP-IDF, CO5300, CST820, аудио, IMU, қуат | Not implemented / verified емес |
 | Arduino cloud сынағы мен STL үлгілері | Prototype only; аппараттық fit сынағы жоқ |
 | React демосы, firmware ойындары, құрылғыдағы қазақша AI дауысы | Not implemented |
-| GitHub Actions | Python, backend, Node және demo smoke checks қосылды |
+| GitHub Actions | Қазіргі workflow Python syntax пен demo presence ғана тексереді; кеңейтілген workflow рұқсаты жоқ болғандықтан қосылмады |
 | ZIP релизі, Windows орнату және қалпына келтіру | Not implemented |
 
 ## Аппараттық шектеулер
@@ -25,4 +25,4 @@ python -m unittest discover -s tests -p 'test_*.py' -v
 node --test tests/*.test.mjs
 ```
 
-GitHub Actions осы тексерулерді PR және push кезінде іске қосады. Бұл тесттердің конфигурация мен кейбір жолдарын тексеретінін, live OpenAI/микрофон/құрылғы сынағы емес екенін ескеріңіз.
+Бұл жергілікті тексерулерді осы ортада іске қосу мүмкін болмады. CI-дің қазіргі жасыл нәтижесі Python syntax және demo presence тексерулерін ғана білдіреді; ол осы толық тест жиынтығының, live OpenAI/микрофонның немесе құрылғының тексерілгенін білдірмейді.

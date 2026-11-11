@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: qipiq-openai-gateway
+    env: python
+    rootDir: .
+    buildCommand: pip install -r server/requirements.txt
+    startCommand: uvicorn server.app:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: QIPIQ_DEVICE_TOKEN
+        sync: false
+      - key: QIPIQ_TEXT_MODEL
+        value: gpt-6-luna

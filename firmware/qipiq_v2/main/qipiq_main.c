@@ -1,4 +1,5 @@
 #include "bsp/esp-bsp.h"
+#include "bsp/touch.h"
 #include "esp_log.h"
 #include "esp_lvgl_port.h"
 #include "qipiq_audio.h"

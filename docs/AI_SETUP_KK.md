@@ -4,8 +4,8 @@
 
 ## Қазір не бар?
 
-- `server/app.py` – Python FastAPI, OpenAI **Responses API** (`gpt-6-luna`) мәтіндік чат; `gpt-transcribe` дауысты мәтінге; уақытша `gpt-4o-mini-tts` дыбыстауға.
-- `web/index.html` – телефон/компьютер браузеріндегі QIPIQ пиксельді бет, мәтін, микрофон түймесі, дыбысты тыңдау.
+- `backend/app.py` – FastAPI сервері. Мәтін үшін Responses API, бір дауыстық сұрақ пен жауап үшін Realtime API қолданылады.
+- `web-demo/index.html` – браузерде ашылатын интерактивті демо.
 - `firmware/QIPIQ_Cloud_Test` – ESP32-S3 құрылғысының **USB Serial Monitor-ынан** серверге HTTPS сұрақ жіберетін сынақ коды. Нағыз микрофон/динамик оған жалғанбаған.
 - `tests/` – OpenAI-ға ақы төлетпейтін mock тесттер.
 
@@ -21,51 +21,60 @@
 Windows PowerShell (Python 3.11+):
 
 ```powershell
-cd QIPIQ_OpenAI_Integration_v1
 python -m venv .venv
 .venv\Scripts\Activate.ps1
-pip install -r server/requirements.txt
-Copy-Item server/.env.example server/.env
+pip install -r backend/requirements.txt
+Copy-Item backend/.env.example backend/.env
 python -c "import secrets; print(secrets.token_urlsafe(32))"
 ```
 
 Linux/macOS:
 
 ```bash
-cd QIPIQ_OpenAI_Integration_v1
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r server/requirements.txt
-cp server/.env.example server/.env
+pip install -r backend/requirements.txt
+cp backend/.env.example backend/.env
 python -c "import secrets; print(secrets.token_urlsafe(32))"
 ```
 
-`server/.env` ішіне:
+`backend/.env` ішіне:
 
 - `OPENAI_API_KEY=...` – тек сервердегі кілт.
 - `QIPIQ_DEVICE_TOKEN=...` – терминалда генерациялаған **бөлек кездейсоқ 32+ таңбалы** құпия код.
 - `QIPIQ_DEMO_MODE=false` – шынымен OpenAI жауап берсін. Ал кілтсіз UI-ды сынау үшін `true` қойыңыз; демо **ChatGPT емес**.
-- `QIPIQ_TEXT_MODEL=gpt-6-luna` – арзанырақ мәтіндік нұсқа. Модель қолжетімділігі мен бағасын OpenAI Platform-да тексеріңіз.
+- `QIPIQ_TEXT_MODEL=gpt-4o-mini` – мәтіндік жауап моделі.
+- `QIPIQ_REALTIME_MODEL=gpt-realtime-2.1-mini` – дауыстық жауап моделі.
 
 > Ескерту: `gpt-4o-mini-tts` /audio/speech уақытша нұсқа, ресми тоқтатылуы 2027 жылғы 6 қаңтарға жоспарланған. Сериялық өнім үшін Realtime voice-қа көшу керек. Ол тек модель атауын өзгерту емес, бөлек API іске асыруын талап етеді.
 
 ## 3. Серверді іске қосу
 
 ```bash
-uvicorn server.app:app --host 127.0.0.1 --port 8000
+uvicorn backend.app:app --host 127.0.0.1 --port 8000
 ```
 
-Браузерде **http://127.0.0.1:8000** ашыңыз. Құрылғы токенін енгізіңіз; мәтіндік сұрақ қойыңыз. Дауыстық енгізу/ойнатуды Chrome/Android Chrome браузері мен нақты микрофон арқылы сынаңыз. Локалхостта микрофон рұқсаты қолжетімді, ал жалпы сайтта HTTPS талап етіледі.
+Браузерде **http://127.0.0.1:8000** мекенжайын ашсаңыз, интерактивті демо көрінеді. Сервер параметрлерін `GET /health` арқылы тексеріңіз.
 
 Осы браузер UI тек **жергілікті MVP**. Оны құпия токен өрісімен интернетке ашық түрде жарияламаңыз: production-та пайдаланушы аутентификациясы, HTTPS, rate limits, per-device credentials, server-side budgets, privacy policy міндетті.
 
 ## 4. Тесттер
 
 ```bash
-python -m pytest tests -q
+python -m unittest discover -s tests -p test_realtime_voice.py
 ```
 
-Ағымдағы жинақ: 11 тест өткізілді (mock transport). Бұл **тірі OpenAI шақыруы жасалды** деген сөз емес. Тірі іске қосу үшін OpenAI API кілті мен төлем қажет.
+Тесттер OpenAI WebSocket оқиғаларын имитациялайды. Нақты қызметті тексеру үшін OpenAI API кілті мен төлем қажет.
+
+### Дауыстық сұрауды тексеру
+
+`POST /v1/voice` сұрауына `X-Device-Token` тақырыбын және `application/octet-stream` мазмұн түрін жіберіңіз. Сұрау денесіне тақырыпшасыз 16 кГц, 16 биттік little-endian моно PCM салынады. Жазба 0,2–6 секунд болуы керек. Жауапта 24 кГц моно PCM және форматты көрсететін `X-QIPIQ-*` тақырыптары қайтады. Сервер аудионы файлға сақтамайды.
+
+Мысалдағы `QIPIQ_DEVICE_TOKEN` орта айнымалысында серверде бапталған токен тұруы керек.
+
+```powershell
+curl.exe --fail-with-body -H "X-Device-Token: $env:QIPIQ_DEVICE_TOKEN" -H "Content-Type: application/octet-stream" --data-binary "@question.pcm" --output answer.pcm http://127.0.0.1:8000/v1/voice
+```
 
 ## 5. ESP32-S3 Wi-Fi сынағы
 
@@ -100,10 +109,10 @@ python -m pytest tests -q
 ## 7. Жобаның маңызды шектеулері
 
 - **OpenAI API кілті берілмеген**: нақты модельге сұрау жасамадық.
-- **ESP32 модулі физикалық қолда жоқ**: firmware-ді құрылғыға флэштеу, акустика және экранға мәтін шығару сыналған жоқ.
+- **V2 плата**: дисплей, сенсор, микрофон және динамик физикалық құрылғыда тексерілді. Firmware-ден AI серверіне дауыс жіберу және жауапты ойнату әзірленіп жатыр.
 - **Production-ready емес:** әр құрылғыға жеке credentials, DB/Redis rate limit, cost quotas, device provisioning, OTA, TLS certificate rotation, firmware hardening, logs redaction, ата-аналарға арналған ережелер қажет.
 - **Балалар:** дауыс/мәтін үшін келісім, жеке деректерді қорғау; балаларға арналған өнімді сатуға шығар алдында тиісті талаптарды тексеріңіз.
-- **Латенттілік:** бұл turn-by-turn (алдымен дауыс тану, сосын GPT, кейін TTS); лезде сөйлесу үшін болашақ Realtime API интеграциясы.
+- **Кідіріс:** `/v1/voice` бір жазбаны толық қабылдағаннан кейін жауап қайтарады.
 - **Сыртқы құралдар:** қазіргі демо ауа райын, сағатты немесе жаңалықтарды сұраса, сервердегі GPT автоматты түрде интернеттен іздемейді. Мұндай функционалды бөлек құралдармен қосу керек.
 
 ## API endpoints
@@ -114,6 +123,7 @@ python -m pytest tests -q
 | `GET /v1/ping` | Токенді тексеру, OpenAI сұрауы жоқ |
 | `GET /health` | Сервис конфигурациясы (кілтті көрсетпейді) |
 | `POST /v1/chat` | JSON `{ "message":"Сәлем", "history":[] }` |
+| `POST /v1/voice` | 16 кГц моно PCM16 сұрау → 24 кГц моно PCM16 жауап |
 | `POST /v1/transcribe` | multipart `audio` файл (`webm`, `wav`, `mp3`, `m4a` т.б.) |
 | `POST /v1/speech` | JSON `{ "text":"Сәлем" }` → MP3 |
 
@@ -122,6 +132,7 @@ POST endpoints `X-Device-Token` header талап етеді; бұл прото�
 ## Қосымша ресми құжаттама
 
 - https://developers.openai.com/api/docs/guides/text
+- https://developers.openai.com/api/docs/guides/realtime-conversations
 - https://developers.openai.com/api/docs/guides/speech-to-text
 - https://developers.openai.com/api/docs/guides/text-to-speech
 - https://developers.openai.com/api/docs/pricing
